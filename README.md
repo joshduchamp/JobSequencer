@@ -1,18 +1,36 @@
-# Salesforce DX Project: Next Steps
+# Job Sequencer
 
-Now that you’ve created a Salesforce DX project, what’s next? Here are some documentation resources to get you started.
+## About
 
-## How Do You Plan to Deploy Your Changes?
+This is a design pattern for daisy chaining Salesforce batch jobs together. Often it's required to have one job fire only after another job finishes. This solution avoids the anti-pattern of a batch job needing to know about the next job to run. The Job Sequencer acts as the governing object that knows of all the jobs that need to run and in which order. It puts the point of control in one place and simplifies the individual jobs.
 
-Do you want to deploy a set of changes, or create a self-contained application? Choose a [development model](https://developer.salesforce.com/tools/vscode/en/user-guide/development-models).
+## How To Use
 
-## Configure Your Salesforce DX Project
+### Batch jobs extend the `AbstractSequencedBatchable` class
 
-The `sfdx-project.json` file contains useful configuration information for your project. See [Salesforce DX Project Configuration](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_ws_config.htm) in the _Salesforce DX Developer Guide_ for details about this file.
+```
+public without sharing class MyBatchable extends AbstractSequencedBatchable 
+{    
+    public List<Contact> start(Database.BatchableContext bc) {
+        return [select FirstName from Contact limit 100];
+    }
 
-## Read All About It
+    public void execute(Database.BatchableContext bc, List<Contact> scope) {
+        for (Contact c : scope) {
+            System.debug('Hello ' + c.FirstName);
+        }
+    }
+}
+```
 
-- [Salesforce Extensions Documentation](https://developer.salesforce.com/tools/vscode/)
-- [Salesforce CLI Setup Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_intro.htm)
-- [Salesforce DX Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_intro.htm)
-- [Salesforce CLI Command Reference](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference.htm)
+### Call the JobSequencer
+
+```
+new JobSequencer()
+    .addJob(new MyBatchable())
+    .addJob(new MyOtherBatchable(),100)
+    .executeNextJob();
+```
+
+The above code will run `MyBatchable`, and then run `MyOtherBatchable` once `MyBatchable` is finished. The call to `executeNextJob` is what starts the whole thing off. Note that we are setting the batch size of `MyOtherBatchable` to 100. If this is excluded, then the default batch size is used.
+
